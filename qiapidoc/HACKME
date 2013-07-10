@@ -1,0 +1,261 @@
+HACKME of qiapidoc
+==================
+
+* Introduction
+    * What is qiapidoc?
+    * How to use qiapidoc?
+        * In your projects
+        * In RST
+    * TODO list
+* Hacking in qiapidoc
+    * qiapidoc configuration
+    * Input parsing
+        * XML processing
+        * Sphinx object generation
+    * Sphinx/output part
+        * The case of mycpp.py
+        * The case of \_\_init\_\_.py
+        * Exceptions raised by sphinx
+* Random notes
+* Conclusion
+
+Introduction
+------------
+
+Welcome to qiapidoc code! qiapidoc has one goal: inserting C++ objects from
+doxygen XML to sphinx. Sadly sphinx internals are not well documented.
+
+This document is here to help you find the stuff you want in the code easily,
+and understand what happens where. Hopefully you will spend less time than me
+writing code or fixing stuff.
+
+### What is qiapidoc?
+
+It is a bridge from doxygen to sphinx to help you document your
+C++ API. You basically write the documentation of your API in doxygen
+directly in your headers or in doxygen files (\*.dox), and everything is
+inserted into sphinx documentation with the same format as everything.
+
+You can use qiapidoc with both upstream sphinx and doxygen.
+
+It is a [sphinx][1] extension. Using qidoc, it is directly available in your
+PYTHONPATH, you just have to add "qiapidoc" in the extensions list of your
+sphinx project. It exports some new features directly added in cpp domain of
+sphinx, including:
+
+* Understanding of \header, \struct, \class, \fn, \namespace, \brief, \param,
+  \param[in], \param[out], \pre, \post, \details and \verbatim in your doxygen
+  (and their @ friends).
+* Can automatically document headers, namespaces, classes, structures,
+  functions, enumerations and macros.
+* It generates a skeleton of the API directory if an option is
+  provided. Files will not be overridden so they can be modified. You can even
+  build the skeleton in /tmp and pick in it when you need to.
+* Any detailed description can contain RST syntax providing it is
+  between \verbatim, \endverbatim tags.
+* You can change the title of auto-documented things with :title:
+  option directly in rst files.
+* You can change the brief of auto-documented things with :brief:
+  option directly in the rst files.
+* You can override the detailed description of something by adding
+  content to the cpp:auto\* tag.
+* You can cross reference to classes, namespaces, members and to the
+  exact overload of a function with the standart cpp roles
+  (``:cpp:class:`qi::Application` ``) in your detailed descriptions.
+
+**See also:** Sphinx extension named [autodoc][2] here for the same purpose in
+Python.
+
+### How to use qiapidoc?
+
+#### In your projects
+
+You must create two documentation projects. One that will be a doxygen one, and
+that will generate XML for the API. The other one is a sphinx project, that
+depends on doxygen project and documents API using commands explained in
+section below.
+
+#### In RST
+
+You can add the documentation of a class in your sphinx by adding:
+
+    .. cpp:autoclass:: qi::Application
+
+You can override detailed description, brief and title of the section generated
+by adding a content, :brief: or :title: options respectively. Example:
+
+    .. cpp:autoclass:: qi::Application
+        :title: I am the title!
+        :brief: I override the brief description of qi::Application class!
+
+        I override the detailed description of qi::Application class!
+
+        .. note::
+            I can contain RST syntax!
+
+Alternatively, you can document other things by using these commands. They have
+the same options.
+
+    .. cpp:autoheader:: os.hpp
+    .. cpp:autonamespace:: qi
+    .. cpp:autofunction:: qi::os::gettimeofday(qi::os::timeval*)
+    .. cpp:autostruct:: qi::os::timeval
+    .. cpp:automember:: qi:os::timeval::tv_sec
+
+Advice: When documenting functions in another file (like done in qi/os.dox of
+libqi), just put pure C++ signature. If the return type changes, doxygen
+does not understand the problem and picks parts of both, which does not give
+great results.
+
+Additional information:
+
+* A workaround for \since is to add ".. versionadded:: 1.16" in the
+  detailed description of the function/class/namespace.
+* A workaround for \deprecated is to add ".. deprecated:: 1.14" in the
+  detailed description of the function/class/namespace.
+* A workaround for \seealso is to add ".. seealso:: blabla" in the
+  detailed description of the function/class/namespace.
+
+When linking to a function, you must precise its complete C++ signature. I
+mean: `NAME(PARAMETER_TYPE_1, PARAMETER_TYPE_2)`. It permits to reference the
+exact overload of a function.
+
+### TODO list
+
+You are probably here with a goal, but if you are interested and have time,
+here are some things that were requested or should be enhanced! (no particular
+order):
+
+* Make all types clickable. For example, qi::log::LogStream would have:
+    * qi -> qi namespace
+    * log -> qi::log namespace
+    * LogStream -> qi::log::LogStream class
+* Add some options, like :undoc-member: to add undocumented members. Also
+  re-ordering of sections and finally filtering them.
+* Try to see if \since and \deprecated can be parsed, but it does not look easy
+  for \deprecated at least.
+* Make it possible to have multiple projects in the same sphinx.
+* Try to find another way to do \includename.
+* fix main index?
+* fix class brief when function parameters are realllllly long (see
+  qi::log::\*::log)
+* add mscgen and dot support.
+* make it possible to document multiple doxygen api in one sphinx project.
+
+
+Hacking in qiapidoc
+-------------------
+
+### qiapidoc configuration
+
+Extension configuration is in sphinx configuration. There are two options:
+
+* `qiapidoc_srcs` that sets the path to the XML generated by the doxygen
+  project sphinx is depending on.
+* `qiapidoc_gen_skeleton` that sets the path to somewhere qiapidoc can generate
+  the RST skeleton of the project. By default, qiapidoc does not generate any
+  \*.rst file.
+
+One way to use `qiapidoc_gen_skeleton` correctly would be to set it for one
+build (the first one), pointing to `/tmp` and copy only the \*.rst files you
+want to have in your documentation (versionned). Then each time you want to add
+a class to your documentation, you can write its \*.rst file.
+
+### Input parsing
+
+#### XML processing
+
+The input of qiapidoc is the XML generated by doxygen. You should take a look at
+it if you think you are going to edit this part. Each class in data directory
+represents a compound. Each compound as a tree somewhere in the XML, so it must
+parse this tree recursively.
+
+To solve this problem easily, each class inherits RootParser class. It contains
+a `parse` function that will take an etree element and loop on its children.
+For each child, it will try to call `_parse_TAGNAME` of the class. You can call
+parse recursively.
+
+Example: (not an actual doxygen output)
+
+    <root>
+        <compound>
+            <name>foo</name>
+            <detaileddescription>foo is nice!</detaileddescription>
+            <briefdescription>foooooooooooooooo is so nice!</briefdescription>
+        </compound>
+    </root>
+
+You are a class that inherits from RootParser and was called (`parse()`) on
+compound. This means that you basically implements `_parse_name` if you want to
+parse the name element, `_parse_detaileddescription` if you want to parse
+detailed description etc. These functions take the element as a parameter.
+
+There is another class that is interesting. It is DocParser. It inherits
+RootParser and implement `_parse_detaileddescription` and
+`_parse_briefdescription`. It also gets the definition of almost anything (XML
+has a "simple" structure). It is useful if you want to parse a compound.
+
+In `data/types.py`, you will find a dispatcher for all types of compounds
+currently understood by qiapidoc.
+
+Finally, each "thing" parser (CPPClass, CPPFunction, ...) inherits of classes
+in `extendedclasses.py`. This makes them usable in a sphinx context, since cpp
+extension builds an AST of each definition it manipulates (see the description
+of `get_obj()` function below)
+
+#### Sphinx object generation
+
+qiapidoc directly uses the parser in `mycpp.py` (see below) to generate the
+AST understood by sphinx. This is why `get_obj()` function (DocParser) is there.
+
+### Sphinx/output part
+
+#### The case of mycpp.py
+
+This file comes directly from sphinx project. You should compare it to the
+upstream file (sphinx/domains/cpp.py). We needed to fork this file since there
+are some mistakes in the parser.
+
+#### The case of \_\_init\_\_.py
+
+This is where all the magic is done. Extension of the cpp domain is done in the
+setup function at the bottom of the file.
+
+The load of the objects is done on first `env-purge-doc` event of sphinx (this
+is why first load takes so long).
+
+CppIndex class generates index files (list of all functions or classes). All
+the other classes basically generate HTML with docutils nodes. The result of
+run functions is treated directly by sphinx.
+
+#### Exceptions raised by sphinx
+
+When playing with sphinx, errors will basically raise an exception without a
+clear explanation of what happened. You can run qidoc with --pdb to launch
+sphinx with -P option, this way you have access to a debugger in sphinx. I
+foster you to read sphinx and docutils code (grep in it) to find where you fail
+or to see examples of code (it is how I found how to create tables with nodes
+for example).
+
+Random Notes
+------------
+
+* Sphinx pickles everything to cache it, so if you get pickle errors, something
+  you gave to it cannot be pickled.
+* Some nodes are defined in `sphinx/addnodes.py` (sphinx package), and some in
+  `docutils/nodes.py` (docutils package).
+* #pocoo @ freenode may help you. Pocoo team is there and watches.
+* Captain obvious: When modifying documentation configuration, always make sure
+  that you modify the right one... (and do not forget the templates here
+  (cf. EXCLUDE))
+
+Conclusion
+----------
+
+Code does not look that good, but it is not that ugly either. Hopefully you will
+leave it cleaner than right now. Have fun.
+
+[1]: http://sphinx.pocoo.org/
+[2]: http://sphinx.pocoo.org/ext/autodoc.html#module-sphinx.ext.autodoc
+
+<!-- vim: set filetype=markdown : -->
