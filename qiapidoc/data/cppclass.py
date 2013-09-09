@@ -72,7 +72,7 @@ class CPPClass(DocClassDefExpr, DocParser):
         if label in self.basecls:
             self.basecls[label].name = element.text
         if label in self.inhecls:
-            self.basecls[label].name = element.text
+            self.inhecls[label].name = element.text
 
     # Used to render complete documentation
     def _is_public(self, obj, public):
