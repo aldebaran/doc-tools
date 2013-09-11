@@ -96,6 +96,65 @@ class CPPAutoDocObject:
                                 match_titles=1)
         return contentnode
 
+    def _make_enum_documentation(self, obj):
+        def get_entry(node):
+            para = addnodes.compact_paragraph()
+            para += node
+            entry = nodes.entry()
+            entry += para
+            return entry
+        desc = addnodes.desc_signature()
+        desc['ids'].append(obj.get_id())
+        first = False
+        desc += nodes.emphasis(text=u'enum')
+        desc += nodes.Text(u' ')
+        desc += addnodes.desc_name(text=obj.get_name())
+        desc.attributes['first'] = True
+        content = addnodes.desc_content()
+        if obj.brief():
+            para = nodes.paragraph()
+            para += nodes.emphasis(text='Brief: ')
+            para += nodes.Text(' '.join(obj.brief()))
+            content += para
+        table, body = nodes.table(), nodes.tbody()
+        tgroup = nodes.tgroup(cols=3)
+        thead = nodes.thead()
+        for it in [20, 10, 70]:
+            tgroup += nodes.colspec(colwidth=it)
+        tgroup += thead
+        tgroup += body
+        table += tgroup
+        head_row = nodes.row()
+        for it in ['Name', 'Value', 'Brief']:
+            head_row += get_entry(nodes.Text(it))
+        thead += head_row
+        for val in sorted(obj.values):
+            row = nodes.row()
+            row += get_entry(nodes.literal(text=val.name))
+            tmp = [val.value if val.value is not None else '',
+            ' '.join(val.brief())]
+            for it in tmp:
+                row += get_entry(nodes.Text(it))
+            body += row
+        content += table
+        return (desc, content)
+
+class CPPAutoEnumObject(CPPAutoDocObject, CPPObject):
+    def __init__(self, *args, **kwargs):
+        print("Autoenum: " + ','.join(map(lambda x: str(x), args)))
+        CPPAutoDocObject.__init__(self)
+        CPPObject.__init__(self, *args, **kwargs)
+        print("args: " + ','.join(map(lambda x: str(x), self.arguments)))
+
+    def run(self):
+        populated = CPPAutoDocObject._populate(self)
+        if populated:
+          (desc, content) = CPPAutoDocObject._make_enum_documentation(self, self._obj)
+          lst = addnodes.desc()
+          lst += desc
+          lst += content
+          lst['objtype'] = 'type'
+          return [lst]
 
 class CPPAutoMemberObject(CPPAutoDocObject, CPPMemberObject):
     def __init__(self, *args, **kwargs):
@@ -490,13 +549,7 @@ class CPPAutoNamespaceObject(CPPAutoHeaderObject):
             return section
         return None
 
-    def _make_enum_documentation(self, obj):
-        def get_entry(node):
-            para = addnodes.compact_paragraph()
-            para += node
-            entry = nodes.entry()
-            entry += para
-            return entry
+    def _make_enums_documentation(self, obj):
         first = True
         if obj.enums:
             section = self._make_section('Enumerations')
@@ -505,41 +558,9 @@ class CPPAutoNamespaceObject(CPPAutoHeaderObject):
             lst['objtype'] = 'type'
             for obj_ in obj.enums:
                 obj_.docname = obj.docname
-                desc = addnodes.desc_signature()
-                desc['ids'].append(obj_.get_id())
+                (desc, content) = _make_enum_documentation(self, obj_)
                 desc.attributes['first'] = first
-                first = False
-                desc += nodes.emphasis(text=u'enum')
-                desc += nodes.Text(u' ')
-                desc += addnodes.desc_name(text=obj_.get_name())
                 lst += desc
-                content = addnodes.desc_content()
-                if obj_.brief():
-                    para = nodes.paragraph()
-                    para += nodes.emphasis(text='Brief: ')
-                    para += nodes.Text(' '.join(obj_.brief()))
-                    content += para
-                table, body = nodes.table(), nodes.tbody()
-                tgroup = nodes.tgroup(cols=3)
-                thead = nodes.thead()
-                for it in [20, 10, 70]:
-                    tgroup += nodes.colspec(colwidth=it)
-                tgroup += thead
-                tgroup += body
-                table += tgroup
-                head_row = nodes.row()
-                for it in ['Name', 'Value', 'Brief']:
-                    head_row += get_entry(nodes.Text(it))
-                thead += head_row
-                for val in sorted(obj_.values):
-                    row = nodes.row()
-                    row += get_entry(nodes.literal(text=val.name))
-                    tmp = [val.value if val.value is not None else '',
-                           ' '.join(val.brief())]
-                    for it in tmp:
-                        row += get_entry(nodes.Text(it))
-                    body += row
-                content += table
                 lst += content
             return section
         return None
@@ -565,7 +586,7 @@ class CPPAutoNamespaceObject(CPPAutoHeaderObject):
             section += self._make_details(obj)
             main_section += section
             main_section += self._make_methods_documentation(obj)
-            main_section += self._make_enum_documentation(obj)
+            main_section += self._make_enums_documentation(obj)
         else:
             main_section += nodes.paragraph(text='Unknown Namespace.')
         return [indexnode, main_section]
@@ -806,6 +827,7 @@ def setup(app):
     app.add_directive_to_domain('cpp', 'automember', CPPAutoMemberObject)
     app.add_directive_to_domain('cpp', 'autonamespace', CPPAutoNamespaceObject)
     app.add_directive_to_domain('cpp', 'autostruct', CPPAutoStructObject)
+    app.add_directive_to_domain('cpp', 'autoenum', CPPAutoEnumObject)
 
     app.add_index_to_domain('cpp', CppClassIndex)
     app.add_index_to_domain('cpp', CppFunctionIndex)
