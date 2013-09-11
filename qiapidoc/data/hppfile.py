@@ -44,7 +44,7 @@ class HPPFile(DocParser, CPPDocumentedObject):
             InnerClassOrNamespace(element.text, element.attrib['refid']))
 
     def _parse_memberdef(self, element):
-        obj = qiapidoc.data.types.parse_type(self._root, self.objs, element)
+        obj = qiapidoc.data.types.parse_type(self._xml_roots, self.objs, element)
         if obj is None or not obj.get_obj():
             return
         self._set_objs(obj)

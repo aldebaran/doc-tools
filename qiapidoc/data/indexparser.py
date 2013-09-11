@@ -8,15 +8,14 @@ from xml.etree import ElementTree as etree
 
 class IndexParser(qiapidoc.data.rootparser.RootParser):
     def parse_index(self):
-        path = self._filepath('index.xml')
-        if not os.path.exists(path):
-            print >> sys.stderr, 'Index file not found:', path
-            return
-        tree = etree.parse(path)
-        self.parse(tree.getroot())
+        for p in self._xml_roots:
+            f = os.path.join(p, 'index.xml')
+            if os.path.exists(f):
+                tree = etree.parse(f)
+                self.parse(tree.getroot())
 
     def _parse_compound(self, element):
-        obj = qiapidoc.data.types.parse_type(self._root, self.objs, element)
+        obj = qiapidoc.data.types.parse_type(self._xml_roots, self.objs, element)
         if obj is None:
             return
         self._set_objs(obj)

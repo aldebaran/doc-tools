@@ -38,7 +38,7 @@ class CPPEnum(DocParser, CPPDocumentedObject):
         self.name = element.text
 
     def _parse_enumvalue(self, element):
-        obj = CPPEnumValue(self._root, self.objs)
+        obj = CPPEnumValue(self._xml_roots, self.objs)
         obj.parse(element)
         self.values.append(obj)
 
