@@ -1228,6 +1228,21 @@ class CPPFunctionObject(CPPObject):
         signode += nodes.Text(u' ')
         self.attach_function(signode, func)
 
+class customnode(nodes.General, nodes.TextElement):
+    pass
+
+class CPPAutoTemplate(Directive):
+    """ Directive to allow referencing classes and functions without the template part"""
+    has_content = False
+    required_arguments = 1
+    optional_arguments = 0
+    final_argument_whitespace = True
+    option_spec = {}
+
+    def run(self):
+      node = customnode()
+      node['auto_template'] = True
+      return [node]
 
 class CPPCurrentNamespace(Directive):
     """
@@ -1242,6 +1257,7 @@ class CPPCurrentNamespace(Directive):
     option_spec = {}
 
     def run(self):
+        res = []
         env = self.state.document.settings.env
         if self.arguments[0].strip() in ('NULL', '0', 'nullptr'):
             env.temp_data['cpp:prefix'] = None
@@ -1250,12 +1266,17 @@ class CPPCurrentNamespace(Directive):
             try:
                 prefix = parser.parse_type()
                 parser.assert_end()
+                mynode = customnode()
+                mynode['parent'] = env.docname
+                mynode['default_namespace'] = self.arguments[0]
+                res.append(mynode)
+
             except DefinitionError, e:
                 self.state_machine.reporter.warning(e.description,
                                                     line=self.lineno)
             else:
                 env.temp_data['cpp:prefix'] = prefix
-        return []
+        return res
 
 
 class CPPXRefRole(XRefRole):
@@ -1295,7 +1316,8 @@ class MyCPPDomain(CPPDomain):
         'function':     CPPFunctionObject,
         'member':       CPPMemberObject,
         'type':         CPPTypeObject,
-        'namespace':    CPPCurrentNamespace
+        'namespace':    CPPCurrentNamespace,
+        'auto_template': CPPAutoTemplate
     }
     roles = {
         'class': CPPXRefRole(),
@@ -1303,27 +1325,74 @@ class MyCPPDomain(CPPDomain):
         'member': CPPXRefRole(),
         'type': CPPXRefRole(),
         'macro': CPPXRefRole(),
+        'guess': CPPXRefRole()
     }
     initial_data = {
         'objects': {},  # fullname -> docname, objtype
     }
+
 
     def clear_doc(self, docname):
         for fullname, (fn, _, _) in self.data['objects'].items():
             if fn == docname:
                 del self.data['objects'][fullname]
 
+    def find_up(self, node, attr):
+        """ Find a node with given attr going up"""
+        if not isinstance(node, nodes.Element):
+            return None
+        if node.get(attr, None) is not None:
+            return node
+        for child in node:
+            if not isinstance(child, nodes.Element):
+                continue
+            if child.get(attr, None) is not None:
+                return child
+        if node.parent is not None:
+            return self.find_up(node.parent, attr)
+        else:
+            return None
+
+    def resolve_auto_template(self, name, ns, typ):
+        """ Try to find an entry of form name<T> or ns::name<T> """
+        nsname = ns + '::' + name
+        for k in self.data['objects']:
+            nt = re.sub('<(.*)>', '', k)
+            if nt == name or nt == nsname:
+                if typ == 'guess' or self.data['objects'][k][1] in self.objtypes_for_role(typ):
+                    return k
+        return None
+
     def resolve_xref(self, env, fromdocname, builder,
                      typ, target, node, contnode):
         def _create_refnode(expr):
             name = unicode(expr)
-            if name not in self.data['objects']:
+            match = None
+            ns = ''
+            if name in self.data['objects']:
+              match = name
+            if not match:
+              #look up for a default_nanespace node
+              cn = self.find_up(node, 'default_namespace')
+              if cn is not None:
+                ns = cn['default_namespace']
+                ns_name = ns + '::' + name
+                if ns_name in self.data['objects']:
+                  match = ns_name
+            if not match:
+              # look up for an autotemplate node
+              cn = self.find_up(node, 'auto_template')
+              if cn and cn['auto_template']:
+                match = self.resolve_auto_template(name, ns, typ)
+            if not match:
                 return None
-            obj = self.data['objects'][name]
-            if obj[1] not in self.objtypes_for_role(typ):
+            obj = self.data['objects'][match]
+            if typ != 'guess' and obj[1] not in self.objtypes_for_role(typ):
                 return None
+            # FIXME: use name or match in make_refnode?
+            # grr, no effect
             return make_refnode(builder, fromdocname, obj[0], obj[2],
-                                contnode, name)
+                                contnode, match)
 
         parser = DefinitionParser(target)
         try:

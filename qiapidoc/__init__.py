@@ -815,6 +815,10 @@ def env_purge_doc(app, env, docname):
     app.env.domains['cpp'].parse_doxygen()
     app.env.domains['cpp'].gen_skeleton()
 
+def cleanup_custom_nodes(app, doctree, fromdocname):
+    for node in doctree.traverse(customnode):
+        node.parent.remove(node)
+
 def setup(app):
     if 'cpp' not in app.domains:
         raise ExtensionError('Extension must be loaded after cpp.')
@@ -837,3 +841,6 @@ def setup(app):
 
     app.connect('env-get-outdated', env_get_outdated)
     app.connect('env-purge-doc', env_purge_doc)
+    # The HTTP writter chockes on nodes it does not understand when visiting the
+    # tree. So remove our custom nodes just before this step.
+    app.connect('doctree-resolved', cleanup_custom_nodes)
