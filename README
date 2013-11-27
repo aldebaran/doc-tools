@@ -2,7 +2,6 @@ Contains custom sphinx extensions
 
 
 * cppwithparams.py : some extensions for the c++ domain
-* doxylink         : copy of sphinxcontrib.ext.doxylink
 * extendcpp.py     : other extensions of the C++ domain
 * naoqi.py         : directive for events and ALMemery keys
 * qiapidoc         : autodoc for C++
