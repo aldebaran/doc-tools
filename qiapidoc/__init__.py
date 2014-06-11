@@ -155,6 +155,7 @@ class CPPAutoEnumObject(CPPAutoDocObject, CPPObject):
           lst += content
           lst['objtype'] = 'type'
           return [lst]
+        return []
 
 class CPPAutoMemberObject(CPPAutoDocObject, CPPMemberObject):
     def __init__(self, *args, **kwargs):
