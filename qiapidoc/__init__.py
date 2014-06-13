@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 
 import qiapidoc.data.types
 
@@ -262,6 +263,33 @@ class CPPAutoFunctionObject(CPPAutoDocObject, CPPFunctionObject):
     def __init__(self, *args, **kwargs):
         CPPAutoDocObject.__init__(self)
         CPPFunctionObject.__init__(self, *args, **kwargs)
+
+    # overload in case of functions to find best match instead
+    def _get_obj(self, name_provided=None):
+        if self._obj is not None and not name_provided:
+            return self._obj
+        name = name_provided
+        if name_provided is None:
+            name = self.arguments[0]
+        matches = dict()
+        for k,v in self._get_domain().data['doxygen_objs'].iteritems():
+            funcname = name.split('(')[0]
+            if funcname != "" and k.startswith(funcname):
+                if k == name:
+                    if not name_provided:
+                        self._obj = v
+                    return v
+                else:
+                    matches[k] = v
+        if len(matches) is 1:
+            res = matches.values()[0]
+            if not name_provided:
+                self._obj = res
+            return res
+        print >> sys.stderr, "Could not find function matching [", name, "], candidates are:"
+        for k in matches.iterkeys():
+            print >> sys.stderr, "- ", k
+        return None
 
     def run(self):
         populated = CPPAutoDocObject._populate(self)
