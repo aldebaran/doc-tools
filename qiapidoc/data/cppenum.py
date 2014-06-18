@@ -35,7 +35,11 @@ class CPPEnum(DocParser, CPPDocumentedObject):
         self.refid = element.attrib['id']
 
     def _parse_name(self, element):
-        self.name = element.text
+        # if the namespace has already been set...
+        if self.name.endswith('::'):
+            self.name = self.name + element.text
+        else:
+            self.name = element.text
 
     def _parse_enumvalue(self, element):
         obj = CPPEnumValue(self._xml_roots, self.objs)
@@ -50,3 +54,10 @@ class CPPEnum(DocParser, CPPDocumentedObject):
 
     def get_id(self):
         return ('E_' + self.name)
+
+    def set_namespace(self, namespace):
+        # we just ensure the scope operator is here
+        if namespace.endswith('::'):
+            self.name = namespace + self.name;
+        else:
+            self.name = namespace + "::" + self.name

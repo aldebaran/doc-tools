@@ -358,6 +358,23 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
         else:
             return None
 
+    def _make_enums_documentation(self, obj):
+        if obj.enums:
+            first = True
+            section = self._make_section('Enumerations')
+            lst = addnodes.desc()
+            section += lst
+            lst['objtype'] = 'type'
+            for elem in obj.enums:
+                elem.docname = obj.docname
+                (desc, content) = self._make_enum_documentation(elem)
+                desc.attributes['first'] = first
+                first = False
+                lst += desc
+                lst += content
+            return section
+        return None
+
     def run(self):
         populated = CPPAutoDocObject._populate(self)
         indexnode = addnodes.index(entries=[])
@@ -369,6 +386,8 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
             section += self._make_brief(obj)
             section += self._make_include(obj)
             section += self._make_inheritance(obj)
+            main_section += section
+            section = self._make_enums_documentation(obj)
             main_section += section
             sects = {
                 'types': 'Types',

@@ -18,6 +18,7 @@ class CPPClass(DocClassDefExpr, DocParser):
         DocParser.__init__(self, root, objs)
         DocClassDefExpr.__init__(self)
         self.basecls, self.inhecls, self.include_name = dict(), dict(), ''
+        self.enums = []
         self.sorting_type = 'class'
 
     def __cmp__(self, other):
@@ -44,6 +45,8 @@ class CPPClass(DocClassDefExpr, DocParser):
         if obj is None:
             return
         self._set_objs(obj)
+        if element.attrib['kind'] == 'enum':
+            self.enums.append(obj)
 
     # Inheritance parsing
     def _parse_basecompoundref(self, element):
