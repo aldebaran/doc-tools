@@ -328,8 +328,7 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
 
     def _make_methods_documentation(self, obj):
         section = self._make_section('Function Documentation')
-        subobjs = [it for it in obj.filter_by_id('all-functions')
-                   if it.is_documented()]
+        subobjs = obj.filter_by_id('all-functions')
         if subobjs:
             for obj_ in sorted(subobjs):
                 name = obj_.get_name()
