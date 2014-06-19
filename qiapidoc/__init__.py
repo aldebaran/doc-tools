@@ -331,7 +331,7 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
         subobjs = obj.filter_by_id('all-functions')
         if subobjs:
             for obj_ in sorted(subobjs):
-                name = obj_.get_name()
+                name = unicode(obj_.get_name())
                 tmp = CPPAutoFunctionObject(
                     'cpp:function', [name], dict(), StringList([], items=[]),
                     0, 0, u'.. cpp:autofunction:: {}'.format(name), self.state,

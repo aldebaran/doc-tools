@@ -468,6 +468,23 @@ class MemberObjDefExpr(NamedDefExpr):
             buf.append(u' = %s' % self.value)
         return u''.join(buf)
 
+class FuncName:
+
+    def __init__(self, name, params, const):
+        self.name = name
+        self.params = params
+        self.const = const
+
+    def prefix(self, prefix):
+        return FuncName(self.name.prefix(prefix), self.params, self.const)
+
+    def __unicode__(self):
+        u= u'{name}({params}){const}'.format(
+            name = self.name.get_name(),
+            params = self.params,
+            const = ' const' if self.const else '',
+        )
+        return u
 
 class FuncDefExpr(NamedDefExpr):
 
@@ -497,12 +514,10 @@ class FuncDefExpr(NamedDefExpr):
         )
 
     def get_name(self):
-        return u'{name}({params}){const}'.format(
-            name = self.name.get_name(),
-            params = ', '.join([unicode(it.type or it.name) for it in
-                                self.signature]),
-            const = ' const' if self.const else '',
-        )
+        return FuncName(self.name,
+                ', '.join([unicode(it.type or it.name) for it in
+                    self.signature]),
+                self.const)
 
     def __unicode__(self):
         buf = self.get_modifiers()
@@ -529,7 +544,7 @@ class FuncSigDefExpr(FuncDefExpr):
                              signature, False, False, False)
 
     def __unicode__(self):
-        return self.get_name()
+        return unicode(self.get_name())
 
 
 class DefineCallDefExpr(FuncDefExpr):
@@ -950,6 +965,27 @@ class DefinitionParser(object):
 
         rv = self._parse_type()
         self.skip_ws()
+        # some things just don't have return values
+        if self.current_char == '(':
+            name = rv
+            rv = None
+        else:
+            name = self._parse_type()
+        return FuncDefExpr(name, visibility, static, explicit, constexpr, rv,
+                           *self._parse_signature())
+
+    def parse_type_or_function(self):
+        visibility, static = self._parse_visibility_static()
+        virtual = self.skip_word_and_ws('virtual')
+        explicit = self.skip_word_and_ws('explicit')
+        constexpr = self.skip_word_and_ws('constexpr')
+
+        rv = self._parse_type()
+        self.skip_ws()
+
+        if self.eof:
+            return rv
+
         # some things just don't have return values
         if self.current_char == '(':
             name = rv
@@ -1396,7 +1432,7 @@ class MyCPPDomain(CPPDomain):
 
         parser = DefinitionParser(target)
         try:
-            expr = parser.parse_type().get_name()
+            expr = parser.parse_type_or_function().get_name()
             parser.skip_ws()
             if not parser.eof or expr is None:
                 raise DefinitionError('')
