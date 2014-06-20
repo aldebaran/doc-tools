@@ -1,6 +1,8 @@
 import os
 import re
 
+import qiapidoc.data.types
+
 from docutils import nodes
 from docutils.statemachine import StringList
 from mycpp import *
@@ -9,6 +11,8 @@ from sphinx.application import ExtensionError
 from sphinx.directives import ObjectDescription
 from sphinx.domains import Index
 from sphinx.util.compat import Directive
+from data.cppclass import CPPClass
+from data.cppenum import CPPEnum
 
 import data.indexparser
 
@@ -54,6 +58,12 @@ class CPPAutoDocObject:
         res = self._get_domain().data['doxygen_objs'].get(name, None)
         if not name_provided:
             self._obj = res
+        return res
+
+    def _get_obj_by_refid(self, refid = None):
+        if self._obj is not None and not refid:
+            return self._obj
+        res = self._get_domain().data['doxygen_objs_refid'].get(refid, None)
         return res
 
     def _get_name(self):
@@ -140,6 +150,49 @@ class CPPAutoDocObject:
         content += table
         return (desc, content)
 
+    def _make_typedef_documentation(self, obj):
+        kwargs = {
+            'refdomain': 'cpp',
+            'refexplicit': False,
+        }
+
+        content = addnodes.desc_signature()
+        content['ids'].append(obj.get_id())
+        content.attributes['first'] = True
+
+        span = nodes.inline()
+        span += nodes.emphasis(text = u'typedef ')
+        if obj._ref is None or obj._ref is '' or self._get_obj_by_refid(obj._ref) is None:
+            span += addnodes.desc_type(text = obj._type)
+        else:
+            ref = self._get_obj_by_refid(obj._ref)
+            kwargs['reftarget'] = unicode(ref.get_name())
+            kwargs['reftype'] = qiapidoc.data.types.get_obj_type(ref)
+            refname = addnodes.desc_name()
+            refnode = addnodes.pending_xref('', **kwargs)
+            innernode = nodes.literal(text = unicode(ref.name))
+            innernode.attributes['classes'].extend(['xref', 'cpp', 'cpp-func'])
+            refnode += innernode
+            refname += refnode
+            span += refname
+        content += span
+
+        if obj._args is '':
+            content += nodes.Text(u' ')
+
+        span = nodes.inline()
+        span += addnodes.desc_type(text = obj.rawname)
+        content += span
+
+        if obj._args is not '':
+            content += nodes.inline() + addnodes.desc_type(text = obj._args)
+
+
+        span = nodes.inline()
+        span += nodes.Text(obj._desc)
+
+        return content, span
+
 class CPPAutoEnumObject(CPPAutoDocObject, CPPObject):
     def __init__(self, *args, **kwargs):
         print("Autoenum: " + ','.join(map(lambda x: str(x), args)))
@@ -157,6 +210,21 @@ class CPPAutoEnumObject(CPPAutoDocObject, CPPObject):
           lst['objtype'] = 'type'
           return [lst]
         return []
+
+class CPPAutoTypedefObject(CPPAutoDocObject, CPPObject):
+    def __init__(self, *args, **kwargs):
+        CPPAutoDocObject.__init__(self)
+        CPPObject.__init__(self, *args, **kwargs)
+
+    def run(self):
+        populated = CPPAutoDocObject._populate(self)
+        indexnode = addnodes.index(entries=[])
+        main_node = addnodes.desc()
+        main_node['objtype'] = 'type'
+        if populated:
+            obj = self._get_obj()
+            main_node += self._make_typedef_documentation(obj)
+        return [indexnode, main_node]
 
 class CPPAutoMemberObject(CPPAutoDocObject, CPPMemberObject):
     def __init__(self, *args, **kwargs):
@@ -375,6 +443,23 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
             return section
         return None
 
+    def _make_all_typedefs_documentation(self, obj):
+        section = None
+        if obj.typedefs:
+            first = True
+            section = self._make_section('Types')
+            lst = addnodes.desc()
+            section += lst
+            lst['objtype'] = 'type'
+            for tpd in obj.typedefs:
+                tpd.docname = obj.docname
+                (node, desc) = self._make_typedef_documentation(self._get_obj(tpd.name))
+                node.attributes['first'] = first
+                first = False
+                lst += node
+                lst += desc
+        return section
+
     def run(self):
         populated = CPPAutoDocObject._populate(self)
         indexnode = addnodes.index(entries=[])
@@ -401,6 +486,8 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
                     title = '{} {}'.format(status.title(), sects[id])
                     id = '{}-{}'.format(status, id)
                     main_section += self._make_index_section(obj, title, id)
+            section = self._make_all_typedefs_documentation(obj)
+            main_section += section
             section = self._make_section('Detailed Description')
             section += self._make_details(obj)
             main_section += section
@@ -689,6 +776,7 @@ class CPPAPIDocDomain(MyCPPDomain):
             return
         self._doxygen_parsed = True
         self.data['doxygen_objs'] = dict()
+        self.data['doxygen_objs_refid'] = dict()
         xml_src = self.env.app.config.qiapidoc_srcs
         if xml_src is not None:
             parser = data.indexparser.IndexParser(xml_src)
@@ -696,6 +784,7 @@ class CPPAPIDocDomain(MyCPPDomain):
             for obj in parser.objs.values():
                 if obj.get_obj():
                     self.data['doxygen_objs'][unicode(obj.get_name())] = obj
+                    self.data['doxygen_objs_refid'][obj.refid] = obj
 
     def gen_skeleton(self):
         if self._skel_generated:
@@ -833,6 +922,7 @@ def setup(app):
     app.add_directive_to_domain('cpp', 'autonamespace', CPPAutoNamespaceObject)
     app.add_directive_to_domain('cpp', 'autostruct', CPPAutoStructObject)
     app.add_directive_to_domain('cpp', 'autoenum', CPPAutoEnumObject)
+    app.add_directive_to_domain('cpp', 'autotypedef', CPPAutoTypedefObject)
 
     app.add_index_to_domain('cpp', CppClassIndex)
     app.add_index_to_domain('cpp', CppFunctionIndex)

@@ -20,5 +20,5 @@ class CPPNamespace(HPPFile, CPPDocumentedObject):
     def __unicode__(self):
         return self.name
 
-    def on_enum_instanciated(self, element):
+    def on_elem_instanciated(self, element):
         element.set_namespace(self.compoundname)

@@ -52,9 +52,10 @@ class HPPFile(DocParser, CPPDocumentedObject):
         elif element.attrib['kind'] == 'function':
             self.functions.append(obj)
         elif element.attrib['kind'] == 'enum':
-            self.on_enum_instanciated(obj)
+            self.on_elem_instanciated(obj)
             self.enums.append(obj)
         elif element.attrib['kind'] == 'typedef':
+            self.on_elem_instanciated(obj)
             self.typedefs.append(obj)
         self._set_objs(obj)
 
@@ -67,5 +68,5 @@ class HPPFile(DocParser, CPPDocumentedObject):
     def get_obj(self):
         return True
 
-    def on_enum_instanciated(self, element):
+    def on_elem_instanciated(self, element):
         return

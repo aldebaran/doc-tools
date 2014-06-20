@@ -58,6 +58,6 @@ class CPPEnum(DocParser, CPPDocumentedObject):
     def set_namespace(self, namespace):
         # we just ensure the scope operator is here
         if namespace.endswith('::'):
-            self.name = namespace + self.name;
+            self.name = namespace + self.name
         else:
             self.name = namespace + "::" + self.name
