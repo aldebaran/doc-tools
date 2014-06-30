@@ -885,7 +885,8 @@ class DefinitionParser(object):
                 if self.skip_string(')'):
                     break
                 else:
-                    self.fail('expected closing parenthesis after ellipses')
+#                    self.fail('expected closing parenthesis after ellipses')
+                    continue
 
             argname = default = None
             argtype = self._parse_type()
