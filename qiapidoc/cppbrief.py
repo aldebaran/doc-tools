@@ -154,6 +154,7 @@ class BriefEnv:
         self.scope      = scope
 
         #dict of docname,type,theid
+        self.macros     = dict()
         self.functions  = dict()
         self.types      = dict()
         self.members    = dict()
@@ -164,12 +165,14 @@ class BriefEnv:
     def add(self, refname, docname, type, theid):
         if type == "function":
             self.functions[refname] = (docname, type, theid)
-        if type == "class":
+        elif type == "class":
             self.classes[refname]   = BriefEnv(refname, docname, type, theid, scope='class')
-        if type == "type":
+        elif type == "type":
             self.types[refname]     = (docname, type, theid)
-        if type == "member":
+        elif type == "member":
             self.members[refname]   = (docname, type, theid)
+        elif type == "automacro":
+            self.macros[refname]    = (docname, type, theid)
 
     def _populate(self, obj, func):
         #move object to belonging classes/namespace
@@ -186,12 +189,14 @@ class BriefEnv:
 
             if func == "function":
                 be.functions[refname] = (docname, type, theid)
-            if func == "type":
+            elif func == "type":
                 be.types[refname] = (docname, type, theid)
-            if func == "member":
+            elif func == "member":
                 be.members[refname] = (docname, type, theid)
-            if func == "class":
+            elif func == "class":
                 be.classes[refname] = (docname, type, theid)
+            elif fund == "automacro":
+                be.macros[refname] = (docname, type, theid)
             del obj[refname]
 
     def _populate_class(self):
@@ -212,6 +217,7 @@ class BriefEnv:
         self._populate(self.functions, "function")
         self._populate(self.members  , "member"  )
         self._populate(self.types    , "type"    )
+        self._populate(self.macros   , "automacro")
         self._populate_class()
 
     def render_sub(self, app, doctree, objs, n1, n2):
@@ -261,23 +267,33 @@ class BriefEnv:
         n = self.render_sub(app, doctree, self.namespaces,
                             prepend + "Namespaces" + append,
                             "namespace ")
-        if n : rootnode.append(n)
+        if n:
+            rootnode.append(n)
         n = self.render_sub(app, doctree, self.classes,
                             prepend + "Classes" + append,
                             "class ")
-        if n : rootnode.append(n)
+        if n:
+            rootnode.append(n)
         n = self.render_simple(app, doctree, self.functions,
                                prepend + "Functions"  + append,
                                "functions")
-        if n : rootnode.append(n)
+        if n:
+            rootnode.append(n)
         n = self.render_simple(app, doctree, self.members,
                                prepend + "Members"  + append,
                                "members")
-        if n : rootnode.append(n)
+        if n:
+            rootnode.append(n)
         n = self.render_simple(app, doctree, self.types,
                                prepend + "Types"  + append,
                                "types")
-        if n : rootnode.append(n)
+        if n:
+            rootnode.append(n)
+        n = self.render_simple(app, doctree, self.macros,
+                               prepend + "Macros" + append,
+                               "macros");
+        if n:
+            rootnode.append(n)
         return rootnode
 
 def process_filebrief_nodes(app, doctree, fromdocname):
@@ -286,7 +302,6 @@ def process_filebrief_nodes(app, doctree, fromdocname):
         replace the empty node by a full shiny new one
     """
 
-    print "processing BITCHES"
     env = app.builder.env
     bemap = dict()
 

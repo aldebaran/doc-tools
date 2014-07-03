@@ -957,6 +957,15 @@ class DefinitionParser(object):
         return MemberObjDefExpr(name, visibility, static, typename,
                                 type_suffixes, value)
 
+    def parse_macro(self):
+        # I am a dumb parser
+        self.skip_ws()
+        name = self._parse_type_expr(False)
+        result = self._attach_crefptr(name, False)
+        # Macro params are generally ignored since there's no overload
+        self.read_rest()
+        return result
+
     def parse_function(self):
         visibility, static = self._parse_visibility_static()
         virtual = self.skip_word_and_ws('virtual')
@@ -1081,7 +1090,6 @@ class CPPObject(ObjectDescription):
             signode['ids'].append(theid)
             signode['first'] = (not self.names)
             self.state.document.note_explicit_target(signode)
-
             self.env.domaindata['cpp']['objects'].setdefault(name,
                 (self.env.docname, self.objtype, theid))
 
@@ -1092,7 +1100,7 @@ class CPPObject(ObjectDescription):
     def before_content(self):
         lastname = self.names and self.names[-1]
         if lastname and not self.env.temp_data.get('cpp:parent'):
-            assert isinstance(lastname, NamedDefExpr)
+            assert isinstance(lastname, NamedDefExpr) or isinstance(lastname, NameDefExpr)
             self.env.temp_data['cpp:parent'] = lastname.name
             self.parentname_set = True
         else:
@@ -1344,7 +1352,8 @@ class MyCPPDomain(CPPDomain):
         'class':    ObjType(l_('class'),    'class'),
         'function': ObjType(l_('function'), 'func'),
         'member':   ObjType(l_('member'),   'member'),
-        'type':     ObjType(l_('type'),     'type')
+        'type':     ObjType(l_('type'),     'type'),
+        'macro':    ObjType(l_('macro'),    'macro')
     }
 
     directives = {
@@ -1353,7 +1362,8 @@ class MyCPPDomain(CPPDomain):
         'member':       CPPMemberObject,
         'type':         CPPTypeObject,
         'namespace':    CPPCurrentNamespace,
-        'auto_template': CPPAutoTemplate
+        'auto_template': CPPAutoTemplate,
+        'macro':        CPPObject,
     }
     roles = {
         'class': CPPXRefRole(),
@@ -1361,7 +1371,7 @@ class MyCPPDomain(CPPDomain):
         'member': CPPXRefRole(),
         'type': CPPXRefRole(),
         'macro': CPPXRefRole(),
-        'guess': CPPXRefRole()
+        'guess': CPPXRefRole(),
     }
     initial_data = {
         'objects': {},  # fullname -> docname, objtype

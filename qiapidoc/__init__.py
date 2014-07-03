@@ -180,10 +180,10 @@ class CPPAutoMacroObject(CPPAutoDocObject, CPPObject):
         return ''
 
     def parse_definition(self, parser):
-        pass
+        return parser.parse_macro()
 
     def describe_signature(self, signode, obj):
-        self.attach_name(signode, obj.name)
+        signode += addnodes.desc_name(obj.name, obj.name)
 
     def run(self):
         CPPAutoDocObject._populate(self)
