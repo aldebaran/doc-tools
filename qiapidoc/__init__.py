@@ -1,5 +1,8 @@
 import os
 import re
+import sys
+
+import qiapidoc.data.types
 
 from docutils import nodes
 from docutils.statemachine import StringList
@@ -9,10 +12,13 @@ from sphinx.application import ExtensionError
 from sphinx.directives import ObjectDescription
 from sphinx.domains import Index
 from sphinx.util.compat import Directive
+from data.cppclass import CPPClass
+from data.cppenum import CPPEnum
 
 import data.indexparser
 
 
+from cppbrief import split_func_name
 '''
 qiapidoc
 ========
@@ -53,6 +59,12 @@ class CPPAutoDocObject:
         res = self._get_domain().data['doxygen_objs'].get(name, None)
         if not name_provided:
             self._obj = res
+        return res
+
+    def _get_obj_by_refid(self, refid = None):
+        if self._obj is not None and not refid:
+            return self._obj
+        res = self._get_domain().data['doxygen_objs_refid'].get(refid, None)
         return res
 
     def _get_name(self):
@@ -139,6 +151,49 @@ class CPPAutoDocObject:
         content += table
         return (desc, content)
 
+    def _make_typedef_documentation(self, obj):
+        kwargs = {
+            'refdomain': 'cpp',
+            'refexplicit': False,
+        }
+
+        content = addnodes.desc_signature()
+        content['ids'].append(obj.get_id())
+        content.attributes['first'] = True
+
+        span = nodes.inline()
+        span += nodes.emphasis(text = u'typedef ')
+        if obj._ref is None or obj._ref is '' or self._get_obj_by_refid(obj._ref) is None:
+            span += addnodes.desc_type(text = obj._type)
+        else:
+            ref = self._get_obj_by_refid(obj._ref)
+            kwargs['reftarget'] = unicode(ref.get_name())
+            kwargs['reftype'] = qiapidoc.data.types.get_obj_type(ref)
+            refname = addnodes.desc_name()
+            refnode = addnodes.pending_xref('', **kwargs)
+            innernode = nodes.literal(text = unicode(ref.name))
+            innernode.attributes['classes'].extend(['xref', 'cpp', 'cpp-func'])
+            refnode += innernode
+            refname += refnode
+            span += refname
+        content += span
+
+        if obj._args is '':
+            content += nodes.Text(u' ')
+
+        span = nodes.inline()
+        span += addnodes.desc_type(text = obj.rawname)
+        content += span
+
+        if obj._args is not '':
+            content += nodes.inline() + addnodes.desc_type(text = obj._args)
+
+
+        span = nodes.inline()
+        span += nodes.Text(obj._desc)
+
+        return content, span
+
 class CPPAutoEnumObject(CPPAutoDocObject, CPPObject):
     def __init__(self, *args, **kwargs):
         print("Autoenum: " + ','.join(map(lambda x: str(x), args)))
@@ -155,6 +210,22 @@ class CPPAutoEnumObject(CPPAutoDocObject, CPPObject):
           lst += content
           lst['objtype'] = 'type'
           return [lst]
+        return []
+
+class CPPAutoTypedefObject(CPPAutoDocObject, CPPObject):
+    def __init__(self, *args, **kwargs):
+        CPPAutoDocObject.__init__(self)
+        CPPObject.__init__(self, *args, **kwargs)
+
+    def run(self):
+        populated = CPPAutoDocObject._populate(self)
+        indexnode = addnodes.index(entries=[])
+        main_node = addnodes.desc()
+        main_node['objtype'] = 'type'
+        if populated:
+            obj = self._get_obj()
+            main_node += self._make_typedef_documentation(obj)
+        return [indexnode, main_node]
 
 class CPPAutoMemberObject(CPPAutoDocObject, CPPMemberObject):
     def __init__(self, *args, **kwargs):
@@ -178,10 +249,10 @@ class CPPAutoMacroObject(CPPAutoDocObject, CPPObject):
         return ''
 
     def parse_definition(self, parser):
-        pass
+        return parser.parse_macro()
 
     def describe_signature(self, signode, obj):
-        self.attach_name(signode, obj.name)
+        signode += addnodes.desc_name(obj.name, obj.name)
 
     def run(self):
         CPPAutoDocObject._populate(self)
@@ -192,6 +263,33 @@ class CPPAutoFunctionObject(CPPAutoDocObject, CPPFunctionObject):
     def __init__(self, *args, **kwargs):
         CPPAutoDocObject.__init__(self)
         CPPFunctionObject.__init__(self, *args, **kwargs)
+
+    # overload in case of functions to find best match instead
+    def _get_obj(self, name_provided=None):
+        if self._obj is not None and not name_provided:
+            return self._obj
+        name = name_provided
+        if name_provided is None:
+            name = self.arguments[0]
+        matches = dict()
+        for k,v in self._get_domain().data['doxygen_objs'].iteritems():
+            funcname = name.split('(')[0]
+            if funcname != "" and k.startswith(funcname):
+                if k == name:
+                    if not name_provided:
+                        self._obj = v
+                    return v
+                else:
+                    matches[k] = v
+        if len(matches) is 1:
+            res = matches.values()[0]
+            if not name_provided:
+                self._obj = res
+            return res
+        print >> sys.stderr, "Could not find function matching [", name, "], candidates are:"
+        for k in matches.iterkeys():
+            print >> sys.stderr, "- ", k
+        return None
 
     def run(self):
         populated = CPPAutoDocObject._populate(self)
@@ -327,11 +425,10 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
 
     def _make_methods_documentation(self, obj):
         section = self._make_section('Function Documentation')
-        subobjs = [it for it in obj.filter_by_id('all-functions')
-                   if it.is_documented()]
+        subobjs = obj.filter_by_id('all-functions')
         if subobjs:
             for obj_ in sorted(subobjs):
-                name = obj_.get_name()
+                name = unicode(obj_.get_name())
                 tmp = CPPAutoFunctionObject(
                     'cpp:function', [name], dict(), StringList([], items=[]),
                     0, 0, u'.. cpp:autofunction:: {}'.format(name), self.state,
@@ -357,6 +454,40 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
         else:
             return None
 
+    def _make_enums_documentation(self, obj):
+        if obj.enums:
+            first = True
+            section = self._make_section('Enumerations')
+            lst = addnodes.desc()
+            section += lst
+            lst['objtype'] = 'type'
+            for elem in obj.enums:
+                elem.docname = obj.docname
+                (desc, content) = self._make_enum_documentation(elem)
+                desc.attributes['first'] = first
+                first = False
+                lst += desc
+                lst += content
+            return section
+        return None
+
+    def _make_all_typedefs_documentation(self, obj):
+        section = None
+        if obj.typedefs:
+            first = True
+            section = self._make_section('Types')
+            lst = addnodes.desc()
+            section += lst
+            lst['objtype'] = 'type'
+            for tpd in obj.typedefs:
+                tpd.docname = obj.docname
+                (node, desc) = self._make_typedef_documentation(self._get_obj(tpd.name))
+                node.attributes['first'] = first
+                first = False
+                lst += node
+                lst += desc
+        return section
+
     def run(self):
         populated = CPPAutoDocObject._populate(self)
         indexnode = addnodes.index(entries=[])
@@ -368,6 +499,8 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
             section += self._make_brief(obj)
             section += self._make_include(obj)
             section += self._make_inheritance(obj)
+            main_section += section
+            section = self._make_enums_documentation(obj)
             main_section += section
             sects = {
                 'types': 'Types',
@@ -381,6 +514,8 @@ class CPPAutoClassObject(CPPAutoDocObject, CPPClassObject):
                     title = '{} {}'.format(status.title(), sects[id])
                     id = '{}-{}'.format(status, id)
                     main_section += self._make_index_section(obj, title, id)
+            section = self._make_all_typedefs_documentation(obj)
+            main_section += section
             section = self._make_section('Detailed Description')
             section += self._make_details(obj)
             main_section += section
@@ -592,25 +727,6 @@ class CPPAutoNamespaceObject(CPPAutoHeaderObject):
         return [indexnode, main_section]
 
 
-def split_func_name(name, discard_args = False):
-    pif = name.split("(", 1)
-    if len(pif) == 2:
-        name = pif[0]
-        param = "(" + pif[1]
-    else:
-        param = ""
-
-    if discard_args:
-        param = ""
-
-    fnames = name.rsplit("::", 1)
-    if len(fnames) == 2:
-        fpath = fnames[0]
-        fname = fnames[1] + param
-    else:
-        fpath = ""
-        fname = name + param
-    return (fpath, fname)
 
 
 class CppIndex(Index):
@@ -688,6 +804,7 @@ class CPPAPIDocDomain(MyCPPDomain):
             return
         self._doxygen_parsed = True
         self.data['doxygen_objs'] = dict()
+        self.data['doxygen_objs_refid'] = dict()
         xml_src = self.env.app.config.qiapidoc_srcs
         if xml_src is not None:
             parser = data.indexparser.IndexParser(xml_src)
@@ -695,6 +812,7 @@ class CPPAPIDocDomain(MyCPPDomain):
             for obj in parser.objs.values():
                 if obj.get_obj():
                     self.data['doxygen_objs'][unicode(obj.get_name())] = obj
+                    self.data['doxygen_objs_refid'][obj.refid] = obj
 
     def gen_skeleton(self):
         if self._skel_generated:
@@ -832,6 +950,7 @@ def setup(app):
     app.add_directive_to_domain('cpp', 'autonamespace', CPPAutoNamespaceObject)
     app.add_directive_to_domain('cpp', 'autostruct', CPPAutoStructObject)
     app.add_directive_to_domain('cpp', 'autoenum', CPPAutoEnumObject)
+    app.add_directive_to_domain('cpp', 'autotypedef', CPPAutoTypedefObject)
 
     app.add_index_to_domain('cpp', CppClassIndex)
     app.add_index_to_domain('cpp', CppFunctionIndex)

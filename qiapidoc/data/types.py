@@ -32,6 +32,12 @@ def get_class(kind):
 #        )
         return None
 
+def get_obj_type(obj):
+    for k, v in qiapidoc.data.types.TYPES.iteritems():
+        if isinstance(obj, v):
+            return k
+    raise KeyError('Object is of no known instance')
+
 def parse_type(root, objs, element):
     kind = element.attrib['kind']
     if kind in ['dir']:

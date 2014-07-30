@@ -468,6 +468,23 @@ class MemberObjDefExpr(NamedDefExpr):
             buf.append(u' = %s' % self.value)
         return u''.join(buf)
 
+class FuncName:
+
+    def __init__(self, name, params, const):
+        self.name = name
+        self.params = params
+        self.const = const
+
+    def prefix(self, prefix):
+        return FuncName(self.name.prefix(prefix), self.params, self.const)
+
+    def __unicode__(self):
+        u= u'{name}({params}){const}'.format(
+            name = self.name.get_name(),
+            params = self.params,
+            const = ' const' if self.const else '',
+        )
+        return u
 
 class FuncDefExpr(NamedDefExpr):
 
@@ -497,12 +514,10 @@ class FuncDefExpr(NamedDefExpr):
         )
 
     def get_name(self):
-        return u'{name}({params}){const}'.format(
-            name = self.name.get_name(),
-            params = ', '.join([unicode(it.type or it.name) for it in
-                                self.signature]),
-            const = ' const' if self.const else '',
-        )
+        return FuncName(self.name,
+                ', '.join([unicode(it.type or it.name) for it in
+                    self.signature]),
+                self.const)
 
     def __unicode__(self):
         buf = self.get_modifiers()
@@ -529,7 +544,7 @@ class FuncSigDefExpr(FuncDefExpr):
                              signature, False, False, False)
 
     def __unicode__(self):
-        return self.get_name()
+        return unicode(self.get_name())
 
 
 class DefineCallDefExpr(FuncDefExpr):
@@ -870,7 +885,8 @@ class DefinitionParser(object):
                 if self.skip_string(')'):
                     break
                 else:
-                    self.fail('expected closing parenthesis after ellipses')
+#                    self.fail('expected closing parenthesis after ellipses')
+                    continue
 
             argname = default = None
             argtype = self._parse_type()
@@ -942,6 +958,15 @@ class DefinitionParser(object):
         return MemberObjDefExpr(name, visibility, static, typename,
                                 type_suffixes, value)
 
+    def parse_macro(self):
+        # I am a dumb parser
+        self.skip_ws()
+        name = self._parse_type_expr(False)
+        result = self._attach_crefptr(name, False)
+        # Macro params are generally ignored since there's no overload
+        self.read_rest()
+        return result
+
     def parse_function(self):
         visibility, static = self._parse_visibility_static()
         virtual = self.skip_word_and_ws('virtual')
@@ -950,6 +975,27 @@ class DefinitionParser(object):
 
         rv = self._parse_type()
         self.skip_ws()
+        # some things just don't have return values
+        if self.current_char == '(':
+            name = rv
+            rv = None
+        else:
+            name = self._parse_type()
+        return FuncDefExpr(name, visibility, static, explicit, constexpr, rv,
+                           *self._parse_signature())
+
+    def parse_type_or_function(self):
+        visibility, static = self._parse_visibility_static()
+        virtual = self.skip_word_and_ws('virtual')
+        explicit = self.skip_word_and_ws('explicit')
+        constexpr = self.skip_word_and_ws('constexpr')
+
+        rv = self._parse_type()
+        self.skip_ws()
+
+        if self.eof:
+            return rv
+
         # some things just don't have return values
         if self.current_char == '(':
             name = rv
@@ -1045,7 +1091,6 @@ class CPPObject(ObjectDescription):
             signode['ids'].append(theid)
             signode['first'] = (not self.names)
             self.state.document.note_explicit_target(signode)
-
             self.env.domaindata['cpp']['objects'].setdefault(name,
                 (self.env.docname, self.objtype, theid))
 
@@ -1056,7 +1101,7 @@ class CPPObject(ObjectDescription):
     def before_content(self):
         lastname = self.names and self.names[-1]
         if lastname and not self.env.temp_data.get('cpp:parent'):
-            assert isinstance(lastname, NamedDefExpr)
+            assert isinstance(lastname, NamedDefExpr) or isinstance(lastname, NameDefExpr)
             self.env.temp_data['cpp:parent'] = lastname.name
             self.parentname_set = True
         else:
@@ -1308,7 +1353,8 @@ class MyCPPDomain(CPPDomain):
         'class':    ObjType(l_('class'),    'class'),
         'function': ObjType(l_('function'), 'func'),
         'member':   ObjType(l_('member'),   'member'),
-        'type':     ObjType(l_('type'),     'type')
+        'type':     ObjType(l_('type'),     'type'),
+        'macro':    ObjType(l_('macro'),    'macro')
     }
 
     directives = {
@@ -1317,7 +1363,8 @@ class MyCPPDomain(CPPDomain):
         'member':       CPPMemberObject,
         'type':         CPPTypeObject,
         'namespace':    CPPCurrentNamespace,
-        'auto_template': CPPAutoTemplate
+        'auto_template': CPPAutoTemplate,
+        'macro':        CPPObject,
     }
     roles = {
         'class': CPPXRefRole(),
@@ -1325,7 +1372,7 @@ class MyCPPDomain(CPPDomain):
         'member': CPPXRefRole(),
         'type': CPPXRefRole(),
         'macro': CPPXRefRole(),
-        'guess': CPPXRefRole()
+        'guess': CPPXRefRole(),
     }
     initial_data = {
         'objects': {},  # fullname -> docname, objtype
@@ -1396,7 +1443,7 @@ class MyCPPDomain(CPPDomain):
 
         parser = DefinitionParser(target)
         try:
-            expr = parser.parse_type().get_name()
+            expr = parser.parse_type_or_function().get_name()
             parser.skip_ws()
             if not parser.eof or expr is None:
                 raise DefinitionError('')

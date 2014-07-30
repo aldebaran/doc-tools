@@ -15,7 +15,7 @@ class CPPFunction(DocFuncDefExpr, DocParser):
     def __cmp__(self, other):
         def sub(obj):
             if obj.rv is None:
-                return -1 if '~' in obj.get_name() else -2
+                return -1 if '~' in unicode(obj.get_name()) else -2
             return 0
         self_type, other_type = sub(self), sub(other)
         if (not (self_type or other_type)) or (self_type == other_type):

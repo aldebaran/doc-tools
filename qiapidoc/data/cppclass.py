@@ -2,6 +2,7 @@ import qiapidoc.data.types
 
 from qiapidoc.data.cppfunction import CPPFunction
 from qiapidoc.data.cppvariable import CPPVariable
+from qiapidoc.data.cpptypedef import CPPTypedef
 from qiapidoc.data.docparser import DocParser
 from qiapidoc.extendedclasses import *
 from qiapidoc.mycpp import DefinitionParser
@@ -18,6 +19,7 @@ class CPPClass(DocClassDefExpr, DocParser):
         DocParser.__init__(self, root, objs)
         DocClassDefExpr.__init__(self)
         self.basecls, self.inhecls, self.include_name = dict(), dict(), ''
+        self.enums, self.typedefs = [], []
         self.sorting_type = 'class'
 
     def __cmp__(self, other):
@@ -43,6 +45,11 @@ class CPPClass(DocClassDefExpr, DocParser):
         obj = qiapidoc.data.types.parse_type(self._xml_roots, self.objs, element)
         if obj is None:
             return
+        if element.attrib['kind'] == 'enum':
+            self.enums.append(obj)
+        elif element.attrib['kind'] == 'typedef':
+            obj.set_namespace(str(self.name))
+            self.typedefs.append(obj)
         self._set_objs(obj)
 
     # Inheritance parsing
